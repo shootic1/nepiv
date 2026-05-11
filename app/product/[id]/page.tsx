@@ -8,6 +8,7 @@ import { ChevronLeft, Minus, Plus, ChevronDown, Leaf, Heart, Award, Recycle, Sta
 import { Header } from "@/components/boty/header"
 import { Footer } from "@/components/boty/footer"
 import { nepvicProducts } from "@/lib/products"
+import { useCart } from "@/components/boty/cart-context"
 
 const benefits = [
   { icon: Leaf, label: "100% Natural" },
@@ -28,6 +29,7 @@ export default function ProductPage() {
   const [quantity, setQuantity] = useState(1)
   const [openAccordion, setOpenAccordion] = useState<AccordionSection | null>("details")
   const [isAdded, setIsAdded] = useState(false)
+  const { addItem } = useCart()
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -38,6 +40,15 @@ export default function ProductPage() {
   }
 
   const handleAddToCart = () => {
+    for (let i = 0; i < quantity; i++) {
+      addItem({
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        price: product.price,
+        image: product.image,
+      })
+    }
     setIsAdded(true)
     setTimeout(() => setIsAdded(false), 2000)
   }

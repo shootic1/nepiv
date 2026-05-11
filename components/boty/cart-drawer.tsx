@@ -2,6 +2,7 @@
 
 import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import {
   Drawer,
   DrawerClose,
@@ -15,9 +16,17 @@ import { useCart } from "./cart-context"
 
 export function CartDrawer() {
   const { items, removeItem, updateQuantity, isOpen, setIsOpen, itemCount, subtotal } = useCart()
+  const router = useRouter()
 
   const shipping = 0
   const total = subtotal + shipping
+
+  const handleCheckout = () => {
+    if (items.length === 0) return
+    const first = items[0]
+    setIsOpen(false)
+    router.push(`/checkout?product=${first.id}&qty=${first.quantity}`)
+  }
 
   return (
     <Drawer open={isOpen} onOpenChange={setIsOpen} direction="right">
@@ -125,6 +134,7 @@ export function CartDrawer() {
             {/* Checkout Button */}
             <button
               type="button"
+              onClick={handleCheckout}
               className="w-full bg-primary text-primary-foreground py-4 rounded-full font-medium hover:bg-primary/90 boty-transition"
             >
               Checkout

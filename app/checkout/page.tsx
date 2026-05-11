@@ -20,11 +20,17 @@ function CheckoutContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
 
-  const productId = searchParams.get("product") || "sunscreen"
+  const productIdParam = searchParams.get("product")
   const size = searchParams.get("size") || ""
   const qty = parseInt(searchParams.get("qty") || "1", 10)
 
-  const product = nepvicProducts.find(p => p.id === productId) || nepvicProducts[0]
+  useEffect(() => {
+    if (!productIdParam) {
+      router.replace("/shop")
+    }
+  }, [productIdParam, router])
+
+  const product = nepvicProducts.find(p => p.id === productIdParam) || nepvicProducts[0]
   const [quantity] = useState(qty)
   const [step, setStep] = useState<Step>("information")
   const [shippingMethod, setShippingMethod] = useState("standard")
@@ -143,7 +149,7 @@ function CheckoutContent() {
                 </div>
                 <div>
                   <p className="font-medium text-foreground">{product.name}</p>
-                  <p className="text-sm text-muted-foreground">{size} &middot; Qty {quantity}</p>
+                  <p className="text-sm text-muted-foreground">{size ? `${size} · ` : ""}Qty {quantity}</p>
                 </div>
               </div>
               <div className="space-y-2 text-sm">
@@ -193,7 +199,7 @@ function CheckoutContent() {
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           {/* Back */}
           <Link
-            href={`/product/${productId}`}
+            href={`/product/${product.id}`}
             className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground boty-transition mb-8"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -415,7 +421,7 @@ function CheckoutContent() {
                   ) : step === "shipping" ? (
                     "Continue to Payment"
                   ) : (
-                    `Place Order &middot; Rs. ${total}`
+                    `Place Order · Rs. ${total}`
                   )}
                 </button>
               </div>
