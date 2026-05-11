@@ -206,7 +206,7 @@ export function FeatureSection() {
               className="object-cover feature-float-fast group-hover:scale-110 transition-transform duration-[1200ms] ease-out"
             />
             {/* Soft white overlay so the text on the right stays readable */}
-            <div className="absolute inset-0 bg-white/55 md:bg-gradient-to-r md:from-white/80 md:via-white/40 md:to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-r from-white/85 via-white/30 to-transparent md:from-white/85 md:via-white/15 md:to-transparent" />
             
             <div className="relative z-10 flex flex-col justify-center h-full text-left items-start">
               <div className="inline-flex items-center justify-center w-10 h-10 mb-3">
