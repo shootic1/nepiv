@@ -89,29 +89,45 @@ export function FeatureSection() {
   }, [])
 
   return (
-    <section className="py-24 bg-background">
+    <section className="py-24 bg-background relative">
+      {/* Subtle float animations for the bento images */}
+      <style jsx>{`
+        :global(.feature-float-slow) { animation: floatSlow 9s ease-in-out infinite; will-change: transform; }
+        :global(.feature-float-medium) { animation: floatMedium 7s ease-in-out infinite; will-change: transform; }
+        :global(.feature-float-fast) { animation: floatFast 6s ease-in-out infinite; will-change: transform; }
+        @keyframes floatSlow {
+          0%, 100% { transform: translateY(0) scale(1.02); }
+          50% { transform: translateY(-10px) scale(1.04); }
+        }
+        @keyframes floatMedium {
+          0%, 100% { transform: translateY(0) scale(1.02); }
+          50% { transform: translateY(-7px) scale(1.035); }
+        }
+        @keyframes floatFast {
+          0%, 100% { transform: translateY(0) scale(1.02); }
+          50% { transform: translateY(-5px) scale(1.03); }
+        }
+      `}</style>
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         {/* Bento Grid */}
         <div 
           ref={bentoRef}
           className="grid md:grid-cols-4 mb-20 md:grid-rows-[300px_300px] gap-6"
         >
-          {/* Left Large Block - Video with Overlay Card */}
+          {/* Left Large Block - Plant-Based serum image */}
           <div 
-            className={`relative rounded-3xl overflow-hidden h-[500px] md:h-auto md:col-span-2 md:row-span-2 transition-all duration-700 ease-out ${
+            className={`group relative rounded-3xl overflow-hidden h-[500px] md:h-auto md:col-span-2 md:row-span-2 transition-all duration-700 ease-out ${
               isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
             }`}
             style={{ transitionDelay: '0ms' }}
           >
-            <video
-              autoPlay
-              muted
-              loop
-              playsInline
-              className="absolute inset-0 w-full h-full object-cover"
-            >
-              <source src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/c4baaf67-b900-4b90-af2a-daf25a5a4b78-5un5eTbj9Z67qEtEdsQwlYrte9dZM9.mp4" type="video/mp4" />
-            </video>
+            <Image
+              src="/images/feature-plant-based.jpg"
+              alt="Nepvic Face Serum surrounded by fresh botanicals — 100% plant-based skincare"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover feature-float-slow group-hover:scale-110 transition-transform duration-[1200ms] ease-out"
+            />
             {/* Overlay Card */}
             <div className="absolute bottom-8 left-8 right-8 bg-white p-6 shadow-lg rounded-xl">
               <div className="flex items-start gap-3">
@@ -137,12 +153,13 @@ export function FeatureSection() {
             }`}
             style={{ transitionDelay: '100ms' }}
           >
-            {/* Background Image */}
+            {/* Background Image - full Nepvic line-up */}
             <Image
-              src="/images/products/0ed61900-dd29-4dd2-bc2d-abc2db54c352.png"
-              alt="Natural ingredients"
+              src="/images/feature-natural.jpg"
+              alt="Complete Nepvic skincare line on sage linen with fresh botanicals"
               fill
-              className="object-cover"
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover feature-float-medium group-hover:scale-110 transition-transform duration-[1200ms] ease-out"
             />
 
             {/* Dark Overlay for Text Readability */}
@@ -175,23 +192,21 @@ export function FeatureSection() {
 
           {/* Bottom Right - Eco-Friendly Packaging */}
           <div 
-            className={`rounded-3xl p-6 md:p-8 flex flex-col justify-center relative overflow-hidden md:col-span-2 transition-all duration-700 ease-out ${
+            className={`group rounded-3xl p-6 md:p-8 flex flex-col justify-center relative overflow-hidden md:col-span-2 transition-all duration-700 ease-out ${
               isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
             }`}
             style={{ transitionDelay: '200ms' }}
           >
-            {/* Background Video */}
-            <video
-              autoPlay
-              muted
-              loop
-              playsInline
-              className="absolute inset-0 w-full h-full object-cover scale-[1.02]"
-            >
-              <source src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/a0b7c364-afa9-4afa-9716-45718578cc01-Ih8UaqQr1bl8aoNlbRha4FgaQ65eXX.mp4" type="video/mp4" />
-            </video>
-            {/* Overlay for text readability */}
-            <div className="absolute inset-0 bg-transparent" />
+            {/* Background Image - eco-friendly packaging */}
+            <Image
+              src="/images/feature-eco-packaging.jpg"
+              alt="Nepvic Moisturizer with kraft paper, eucalyptus and recycle tag"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover feature-float-fast group-hover:scale-110 transition-transform duration-[1200ms] ease-out"
+            />
+            {/* Soft white overlay so the text on the right stays readable */}
+            <div className="absolute inset-0 bg-white/55 md:bg-gradient-to-r md:from-white/80 md:via-white/40 md:to-transparent" />
             
             <div className="relative z-10 flex flex-col justify-center h-full text-left items-start">
               <div className="inline-flex items-center justify-center w-10 h-10 mb-3">
