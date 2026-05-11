@@ -25,7 +25,7 @@ export function Hero() {
             objectFit: 'cover'
           }}
         >
-          <source src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/f3d8cad2-8091-4809-aac0-eaac74b0be7c-Z4XUCz3CRR7qjaOsoq6rFmbJfIRdgs.mp4" type="video/mp4" />
+          <source src="/videos/hero-sunscreen.mp4" type="video/mp4" />
         </video>
         {/* Bottom fade gradient */}
         <div className="absolute bottom-0 left-0 right-0 h-[60%] bg-gradient-to-t from-background via-background/50 to-transparent" />
