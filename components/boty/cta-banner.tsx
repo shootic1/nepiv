@@ -40,12 +40,15 @@ export function CTABanner() {
         >
           {/* Background Image */}
           <Image
-            src="/images/bf965cf4-e728-4e72-ab1b-16b1cd8f1822.png"
-            alt="Natural ingredients"
+            src="/images/feature-natural.jpg"
+            alt="Natural Nepvic skincare line on sage linen with botanicals"
             fill
+            sizes="(max-width: 768px) 100vw, 1200px"
             className="object-cover"
           />
-          
+          {/* Dark overlay for text readability */}
+          <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/40 to-black/20" />
+
           <div className="relative z-10 text-left max-w-2xl">
             <h3 className="text-4xl md:text-5xl text-white mb-4 lg:text-5xl">
               100% Natural
