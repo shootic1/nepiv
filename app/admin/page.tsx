@@ -7,6 +7,8 @@ import { Search, Download, RefreshCw, LogOut, ChevronDown, ChevronUp } from "luc
 type Lead = {
   id: string
   createdAt: string
+  updatedAt?: string
+  stage?: "contact" | "address" | "complete"
   status: "new" | "contacted" | "won" | "lost"
   source: string
   firstName?: string
@@ -131,6 +133,8 @@ export default function AdminPage() {
     const header = [
       "id",
       "createdAt",
+      "updatedAt",
+      "stage",
       "status",
       "firstName",
       "lastName",
@@ -284,6 +288,7 @@ export default function AdminPage() {
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">When</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Contact</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stage</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">City</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Product</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Total</th>
@@ -294,14 +299,14 @@ export default function AdminPage() {
                 <tbody>
                   {loading && filtered.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="text-center py-16 text-muted-foreground">
+                      <td colSpan={9} className="text-center py-16 text-muted-foreground">
                         Loading...
                       </td>
                     </tr>
                   )}
                   {!loading && filtered.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="text-center py-16 text-muted-foreground">
+                      <td colSpan={9} className="text-center py-16 text-muted-foreground">
                         No leads yet. Submit a test reservation from the shop to see it here.
                       </td>
                     </tr>
@@ -329,7 +334,14 @@ export default function AdminPage() {
                             <div>{l.email}</div>
                             <div className="text-xs">{l.phone}</div>
                           </td>
-                          <td className="px-4 py-3 text-foreground">{l.city}</td>
+                          <td className="px-4 py-3">
+                            {l.stage === "address" ? (
+                              <span className="px-2 py-1 rounded-full text-xs border bg-emerald-100 text-emerald-800 border-emerald-200">Full</span>
+                            ) : (
+                              <span className="px-2 py-1 rounded-full text-xs border bg-amber-100 text-amber-800 border-amber-200">Contact only</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-foreground">{l.city || <span className="text-muted-foreground/60">—</span>}</td>
                           <td className="px-4 py-3 text-foreground">
                             {l.productName}
                             <div className="text-xs text-muted-foreground">
@@ -356,7 +368,7 @@ export default function AdminPage() {
                         </tr>
                         {expanded && (
                           <tr className="bg-background/30 border-b border-border/30">
-                            <td colSpan={8} className="px-6 py-5">
+                            <td colSpan={9} className="px-6 py-5">
                               <div className="grid md:grid-cols-2 gap-6">
                                 <div>
                                   <h4 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">

@@ -4,17 +4,12 @@ import { useState, useEffect, Suspense } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
-import { ChevronLeft, Shield, Truck, RotateCcw, CheckCircle, ChevronDown } from "lucide-react"
+import { ChevronLeft, Shield, Truck, RotateCcw, CheckCircle, Sparkles } from "lucide-react"
 import { Header } from "@/components/boty/header"
 import { nepvicProducts } from "@/lib/products"
 import { Spinner } from "@/components/ui/spinner"
 
-type Step = "information" | "shipping" | "payment" | "confirmed" | "submitted"
-
-const shippingOptions = [
-  { id: "standard", label: "Standard Delivery", description: "3-5 business days across Nepal", price: 0 },
-  { id: "express", label: "Express Delivery", description: "1-2 business days (Kathmandu Valley)", price: 150 }
-]
+type Step = "contact" | "address" | "submitted"
 
 function CheckoutContent() {
   const searchParams = useSearchParams()
@@ -32,10 +27,10 @@ function CheckoutContent() {
 
   const product = nepvicProducts.find(p => p.id === productIdParam) || nepvicProducts[0]
   const [quantity] = useState(qty)
-  const [step, setStep] = useState<Step>("information")
-  const [shippingMethod, setShippingMethod] = useState("standard")
-  const [orderPlaced, setOrderPlaced] = useState(false)
+  const [step, setStep] = useState<Step>("contact")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [leadId, setLeadId] = useState<string | null>(null)
+  const [showUnavailable, setShowUnavailable] = useState(false)
 
   const [form, setForm] = useState({
     firstName: "",
@@ -46,72 +41,87 @@ function CheckoutContent() {
     city: "",
     state: "",
     pincode: "",
-    cardNumber: "",
-    cardName: "",
-    expiry: "",
-    cvv: "",
-    upi: ""
   })
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "upi" | "cod">("card")
   const [errors, setErrors] = useState<Partial<typeof form>>({})
 
-  const selectedShipping = shippingOptions.find(o => o.id === shippingMethod)!
   const subtotal = product.price * quantity
-  const total = subtotal + selectedShipping.price
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
-    setErrors(prev => ({ ...prev, [e.target.name]: "" }))
+    const { name, value } = e.target
+    setForm(prev => ({ ...prev, [name]: value }))
+    setErrors(prev => ({ ...prev, [name]: "" }))
+
+    // Auto-trigger unavailable popup as soon as pincode reaches 6 digits
+    if (name === "pincode") {
+      const digitsOnly = value.replace(/\D/g, "")
+      if (digitsOnly.length === 6 && step === "address") {
+        // Persist any address info collected so far (lead update) before showing the popup
+        void submitAddress({ ...form, pincode: digitsOnly })
+        setShowUnavailable(true)
+      }
+    }
   }
 
-  const validateInfo = () => {
+  // ---------- Step 1: Save Contact ----------
+  const validateContact = () => {
     const newErrors: Partial<typeof form> = {}
     if (!form.firstName.trim()) newErrors.firstName = "Required"
     if (!form.lastName.trim()) newErrors.lastName = "Required"
     if (!form.email.trim() || !/\S+@\S+\.\S+/.test(form.email)) newErrors.email = "Valid email required"
-    if (!form.phone.trim() || form.phone.length < 10) newErrors.phone = "Valid phone required"
-    if (!form.address.trim()) newErrors.address = "Required"
-    if (!form.city.trim()) newErrors.city = "Required"
-    if (!form.state.trim()) newErrors.state = "Required"
-    if (!form.pincode.trim() || form.pincode.length !== 6) newErrors.pincode = "Valid 6-digit pincode required"
+    if (!form.phone.trim() || form.phone.length < 7) newErrors.phone = "Valid phone required"
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
-  const validatePayment = () => {
-    const newErrors: Partial<typeof form> = {}
-    if (paymentMethod === "card") {
-      if (!form.cardNumber.trim() || form.cardNumber.replace(/\s/g, "").length < 16) newErrors.cardNumber = "Valid card number required"
-      if (!form.cardName.trim()) newErrors.cardName = "Required"
-      if (!form.expiry.trim()) newErrors.expiry = "Required"
-      if (!form.cvv.trim() || form.cvv.length < 3) newErrors.cvv = "Required"
-    } else if (paymentMethod === "upi") {
-      if (!form.upi.trim() || !form.upi.includes("@")) newErrors.upi = "Valid UPI ID required"
-    }
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleNextStep = async () => {
-    if (step !== "information") {
-      // Legacy steps disabled in lead-capture mode
-      return
-    }
-    if (!validateInfo()) return
+  const submitContact = async () => {
+    if (!validateContact()) return
     setIsSubmitting(true)
+    try {
+      const res = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stage: "contact",
+          firstName: form.firstName,
+          lastName: form.lastName,
+          email: form.email,
+          phone: form.phone,
+          productId: product.id,
+          productName: product.name,
+          size,
+          quantity,
+          unitPrice: product.price,
+          subtotal,
+        }),
+      })
+      const data = await res.json().catch(() => null)
+      if (data?.id) setLeadId(data.id)
+    } catch (err) {
+      console.error("Contact submission failed", err)
+    } finally {
+      setIsSubmitting(false)
+      setStep("address")
+    }
+  }
+
+  // ---------- Step 2: Update Lead with Address ----------
+  const submitAddress = async (addr: typeof form) => {
+    if (!leadId) return
     try {
       await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          firstName: form.firstName,
-          lastName: form.lastName,
-          email: form.email,
-          phone: form.phone,
-          address: form.address,
-          city: form.city,
-          state: form.state,
-          pincode: form.pincode,
+          id: leadId,
+          stage: "address",
+          firstName: addr.firstName,
+          lastName: addr.lastName,
+          email: addr.email,
+          phone: addr.phone,
+          address: addr.address,
+          city: addr.city,
+          state: addr.state,
+          pincode: addr.pincode,
           productId: product.id,
           productName: product.name,
           size,
@@ -121,30 +131,16 @@ function CheckoutContent() {
         }),
       })
     } catch (err) {
-      // Even on network failure, we still show the success screen
-      // since the lead-capture is a soft commitment — server logs will show the issue
-      console.error("Lead submission failed", err)
-    } finally {
-      setIsSubmitting(false)
-      setStep("submitted")
+      console.error("Address update failed", err)
     }
   }
 
-  const formatCard = (val: string) => {
-    return val.replace(/\D/g, "").slice(0, 16).replace(/(.{4})/g, "$1 ").trim()
+  const handleAcknowledgeUnavailable = () => {
+    setShowUnavailable(false)
+    setStep("submitted")
   }
 
-  const formatExpiry = (val: string) => {
-    return val.replace(/\D/g, "").slice(0, 4).replace(/^(\d{2})(\d)/, "$1/$2")
-  }
-
-  // Lead-capture mode: only the Information step is active
-  const steps: { key: Step; label: string }[] = [
-    { key: "information", label: "Your Details" },
-  ]
-
-  const stepIndex = steps.findIndex(s => s.key === step)
-
+  // ---------- Submitted screen ----------
   if (step === "submitted") {
     return (
       <main className="min-h-screen bg-background flex flex-col">
@@ -152,14 +148,17 @@ function CheckoutContent() {
         <div className="flex-1 flex items-center justify-center px-6 pt-28 pb-20">
           <div className="max-w-lg w-full text-center">
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-10 h-10 text-primary" />
+              <Sparkles className="w-10 h-10 text-primary" />
             </div>
-            <h1 className="font-serif text-4xl text-foreground mb-3">Reservation received!</h1>
+            <h1 className="font-serif text-4xl text-foreground mb-3">You&apos;re on the list!</h1>
             <p className="text-foreground/80 mb-2">
               Thank you, {form.firstName}. We&apos;ve saved your details for the {product.name}.
             </p>
             <p className="text-muted-foreground mb-8 leading-relaxed">
-              Nepvic is launching in <span className="text-foreground font-medium">{form.city}</span> very soon. Our team will personally reach out to you on <span className="text-foreground">{form.phone}</span> within 24 hours with an early-bird offer and to arrange delivery.
+              Nepvic is expanding fast. The moment we begin delivering to{" "}
+              <span className="text-foreground font-medium">{form.city || "your area"}</span>, our
+              team will personally reach out to you on{" "}
+              <span className="text-foreground">{form.phone}</span> with an early-bird offer.
             </p>
 
             <div className="bg-card rounded-3xl p-6 boty-shadow mb-8 text-left">
@@ -173,7 +172,7 @@ function CheckoutContent() {
                 </div>
               </div>
               <p className="text-sm text-muted-foreground">
-                A confirmation has been sent to <span className="text-foreground">{form.email}</span>. No payment required at this time.
+                A confirmation will be sent to <span className="text-foreground">{form.email}</span>. No payment required at this time.
               </p>
             </div>
 
@@ -197,76 +196,47 @@ function CheckoutContent() {
     )
   }
 
-  if (step === "confirmed") {
-    return (
-      <main className="min-h-screen bg-background flex flex-col">
-        <Header />
-        <div className="flex-1 flex items-center justify-center px-6 pt-28 pb-20">
-          <div className="max-w-md w-full text-center">
-            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-10 h-10 text-primary" />
-            </div>
-            <h1 className="font-serif text-4xl text-foreground mb-3">Order Confirmed!</h1>
-            <p className="text-muted-foreground mb-2">
-              Thank you, {form.firstName}. Your order has been placed successfully.
-            </p>
-            <p className="text-sm text-muted-foreground mb-8">
-              A confirmation has been sent to <span className="text-foreground">{form.email}</span>
-            </p>
-
-            {/* Order Summary Card */}
-            <div className="bg-card rounded-3xl p-6 boty-shadow mb-8 text-left">
-              <div className="flex items-center gap-4 mb-4 pb-4 border-b border-border/40">
-                <div className="relative w-16 h-16 rounded-2xl bg-muted overflow-hidden flex-shrink-0">
-                  <Image src={product.image} alt={product.name} fill className="object-contain p-2" />
-                </div>
-                <div>
-                  <p className="font-medium text-foreground">{product.name}</p>
-                  <p className="text-sm text-muted-foreground">{size ? `${size} · ` : ""}Qty {quantity}</p>
-                </div>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="text-foreground">Rs. {subtotal}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Shipping</span>
-                  <span className="text-foreground">{selectedShipping.price === 0 ? "Free" : `Rs. ${selectedShipping.price}`}</span>
-                </div>
-                <div className="flex justify-between font-medium pt-2 border-t border-border/40">
-                  <span className="text-foreground">Total</span>
-                  <span className="text-foreground">Rs. {total}</span>
-                </div>
-              </div>
-              <div className="mt-4 pt-4 border-t border-border/40 text-sm text-muted-foreground">
-                <p>Delivering to: {form.address}, {form.city}, {form.state} - {form.pincode}</p>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Link
-                href="/"
-                className="flex-1 inline-flex items-center justify-center px-6 py-3 rounded-full text-sm bg-primary text-primary-foreground boty-transition hover:bg-primary/90"
-              >
-                Continue Shopping
-              </Link>
-              <Link
-                href="/shop"
-                className="flex-1 inline-flex items-center justify-center px-6 py-3 rounded-full text-sm border border-foreground/20 text-foreground boty-transition hover:bg-foreground/5"
-              >
-                View All Products
-              </Link>
-            </div>
-          </div>
-        </div>
-      </main>
-    )
-  }
+  // ---------- 2-step Form ----------
+  const steps: { key: Step; label: string }[] = [
+    { key: "contact", label: "Your Contact" },
+    { key: "address", label: "Shipping Address" },
+  ]
+  const stepIndex = steps.findIndex(s => s.key === step)
 
   return (
     <main className="min-h-screen bg-background">
       <Header />
+
+      {/* Unavailable Popup */}
+      {showUnavailable && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 animate-in fade-in duration-200">
+          <div className="bg-background rounded-3xl max-w-md w-full p-8 boty-shadow animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-5">
+              <Sparkles className="w-8 h-8 text-primary" />
+            </div>
+            <h2 className="font-serif text-2xl text-foreground text-center mb-3">
+              We&apos;re launching here soon
+            </h2>
+            <p className="text-muted-foreground text-center mb-2 leading-relaxed">
+              We&apos;re not delivering to <span className="text-foreground font-medium">{form.pincode}</span> just yet
+              {form.city ? <> ({form.city})</> : null}.
+            </p>
+            <p className="text-muted-foreground text-center mb-6 leading-relaxed">
+              You&apos;re officially on our early-access list. As soon as we expand
+              to your area, our team will personally reach out to{" "}
+              <span className="text-foreground">{form.phone}</span> with an
+              exclusive early-bird offer on the {product.name}.
+            </p>
+            <button
+              type="button"
+              onClick={handleAcknowledgeUnavailable}
+              className="w-full bg-primary text-primary-foreground px-8 py-4 rounded-full text-sm tracking-wide boty-transition hover:bg-primary/90 boty-shadow"
+            >
+              Got it — keep me posted
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="pt-28 pb-20">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
@@ -311,10 +281,12 @@ function CheckoutContent() {
           <div className="grid lg:grid-cols-[1fr_380px] gap-10 items-start">
             {/* Left: Form */}
             <div className="bg-card rounded-3xl p-8 boty-shadow">
-              {/* STEP 1: Information */}
-              {step === "information" && (
+              {step === "contact" && (
                 <div>
-                  <h2 className="font-serif text-2xl text-foreground mb-6">Contact & Shipping Information</h2>
+                  <h2 className="font-serif text-2xl text-foreground mb-2">Your Contact</h2>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Quick details so we can reach out when delivery opens in your area.
+                  </p>
                   <div className="space-y-5">
                     <div className="grid sm:grid-cols-2 gap-5">
                       <FormField label="First Name" name="firstName" value={form.firstName} onChange={handleChange} error={errors.firstName} placeholder="Priya" />
@@ -322,6 +294,37 @@ function CheckoutContent() {
                     </div>
                     <FormField label="Email Address" name="email" type="email" value={form.email} onChange={handleChange} error={errors.email} placeholder="priya@example.com" />
                     <FormField label="Phone Number" name="phone" type="tel" value={form.phone} onChange={handleChange} error={errors.phone} placeholder="9841234567" maxLength={10} />
+                  </div>
+                  <div className="mt-8">
+                    <button
+                      type="button"
+                      onClick={submitContact}
+                      disabled={isSubmitting}
+                      className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-8 py-4 rounded-full text-sm tracking-wide boty-transition hover:bg-primary/90 disabled:opacity-70 boty-shadow"
+                    >
+                      {isSubmitting ? (
+                        <span className="flex items-center gap-2">
+                          <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                          </svg>
+                          Saving...
+                        </span>
+                      ) : (
+                        "Continue"
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {step === "address" && (
+                <div>
+                  <h2 className="font-serif text-2xl text-foreground mb-2">Shipping Address</h2>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Where should we deliver your {product.name} once we launch in your area?
+                  </p>
+                  <div className="space-y-5">
                     <FormField label="Address" name="address" value={form.address} onChange={handleChange} error={errors.address} placeholder="House no., Tole, Ward" />
                     <div className="grid sm:grid-cols-3 gap-5">
                       <FormField label="City" name="city" value={form.city} onChange={handleChange} error={errors.city} placeholder="Kathmandu" />
@@ -329,188 +332,21 @@ function CheckoutContent() {
                       <FormField label="Postal Code" name="pincode" value={form.pincode} onChange={handleChange} error={errors.pincode} placeholder="44600" maxLength={6} />
                     </div>
                   </div>
-                </div>
-              )}
-
-              {/* STEP 2: Shipping */}
-              {step === "shipping" && (
-                <div>
-                  <h2 className="font-serif text-2xl text-foreground mb-6">Shipping Method</h2>
-                  <div className="space-y-4">
-                    {shippingOptions.map((option) => (
-                      <label
-                        key={option.id}
-                        className={`flex items-center gap-4 p-5 rounded-2xl border-2 cursor-pointer boty-transition ${
-                          shippingMethod === option.id
-                            ? "border-primary bg-primary/5"
-                            : "border-border/40 hover:border-border"
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="shipping"
-                          value={option.id}
-                          checked={shippingMethod === option.id}
-                          onChange={() => setShippingMethod(option.id)}
-                          className="accent-primary w-4 h-4"
-                        />
-                        <div className="flex-1">
-                          <p className="font-medium text-foreground">{option.label}</p>
-                          <p className="text-sm text-muted-foreground">{option.description}</p>
-                        </div>
-                        <span className="font-medium text-foreground">
-                          {option.price === 0 ? "Free" : `Rs. ${option.price}`}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-
-                  <div className="mt-8 p-5 rounded-2xl bg-background border border-border/40">
-                    <h3 className="text-sm font-medium text-foreground mb-3">Delivering to</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {form.firstName} {form.lastName}<br />
-                      {form.address}, {form.city}, {form.state} - {form.pincode}<br />
-                      {form.phone}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setStep("information")}
-                      className="text-sm text-primary mt-2 hover:underline"
-                    >
-                      Change address
-                    </button>
+                  <div className="mt-6 flex items-center gap-3 text-xs text-muted-foreground">
+                    <Shield className="w-4 h-4 text-primary flex-shrink-0" />
+                    Your details are kept private and only used to notify you when we launch in your area.
                   </div>
                 </div>
               )}
-
-              {/* STEP 3: Payment */}
-              {step === "payment" && (
-                <div>
-                  <h2 className="font-serif text-2xl text-foreground mb-6">Payment</h2>
-
-                  {/* Payment Method Tabs */}
-                  <div className="flex gap-3 mb-6">
-                    {(["card", "upi", "cod"] as const).map((method) => (
-                      <button
-                        key={method}
-                        type="button"
-                        onClick={() => setPaymentMethod(method)}
-                        className={`flex-1 py-3 rounded-full text-sm font-medium boty-transition ${
-                          paymentMethod === method
-                            ? "bg-foreground text-background"
-                            : "bg-background border border-border/40 text-foreground/70 hover:text-foreground"
-                        }`}
-                      >
-                        {method === "card" ? "Card" : method === "upi" ? "eSewa/Khalti" : "Cash on Delivery"}
-                      </button>
-                    ))}
-                  </div>
-
-                  {paymentMethod === "card" && (
-                    <div className="space-y-5">
-                      <FormField
-                        label="Card Number"
-                        name="cardNumber"
-                        value={form.cardNumber}
-                        onChange={(e) => setForm(prev => ({ ...prev, cardNumber: formatCard(e.target.value) }))}
-                        error={errors.cardNumber}
-                        placeholder="1234 5678 9012 3456"
-                        maxLength={19}
-                      />
-                      <FormField label="Name on Card" name="cardName" value={form.cardName} onChange={handleChange} error={errors.cardName} placeholder="Priya Sharma" />
-                      <div className="grid grid-cols-2 gap-5">
-                        <FormField
-                          label="Expiry Date"
-                          name="expiry"
-                          value={form.expiry}
-                          onChange={(e) => setForm(prev => ({ ...prev, expiry: formatExpiry(e.target.value) }))}
-                          error={errors.expiry}
-                          placeholder="MM/YY"
-                          maxLength={5}
-                        />
-                        <FormField label="CVV" name="cvv" value={form.cvv} onChange={handleChange} error={errors.cvv} placeholder="123" maxLength={4} />
-                      </div>
-                    </div>
-                  )}
-
-                  {paymentMethod === "upi" && (
-                    <div className="space-y-5">
-                      <FormField
-                        label="eSewa / Khalti Mobile Number"
-                        name="upi"
-                        value={form.upi}
-                        onChange={handleChange}
-                        error={errors.upi}
-                        placeholder="9841234567"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Enter your eSewa or Khalti registered mobile number for payment link
-                      </p>
-                    </div>
-                  )}
-
-                  {paymentMethod === "cod" && (
-                    <div className="p-5 rounded-2xl bg-background border border-border/40 text-sm text-muted-foreground">
-                      Pay cash when your order arrives at your door. An additional handling fee of Rs. 50 may apply for COD orders.
-                    </div>
-                  )}
-
-                  {/* Security badges */}
-                  <div className="flex items-center gap-6 mt-6 pt-6 border-t border-border/40">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Shield className="w-4 h-4 text-primary" />
-                      SSL Secured
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Truck className="w-4 h-4 text-primary" />
-                      Fast Delivery
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <RotateCcw className="w-4 h-4 text-primary" />
-                      Easy Returns
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* CTA Button */}
-              <div className="mt-8">
-                <button
-                  type="button"
-                  onClick={handleNextStep}
-                  disabled={isSubmitting}
-                  className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-8 py-4 rounded-full text-sm tracking-wide boty-transition hover:bg-primary/90 disabled:opacity-70 boty-shadow"
-                >
-                  {isSubmitting ? (
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                      </svg>
-                      Processing...
-                    </span>
-                  ) : step === "information" ? (
-                    "Reserve My Order"
-                  ) : (
-                    "Continue"
-                  )}
-                </button>
-              </div>
             </div>
 
             {/* Right: Order Summary */}
             <div className="bg-card rounded-3xl p-6 boty-shadow sticky top-28">
               <h3 className="font-serif text-xl text-foreground mb-5">Order Summary</h3>
 
-              {/* Product */}
               <div className="flex items-center gap-4 mb-6 pb-6 border-b border-border/40">
                 <div className="relative w-20 h-20 rounded-2xl bg-muted overflow-hidden flex-shrink-0">
-                  <Image
-                    src={product.image}
-                    alt={product.name}
-                    fill
-                    className="object-contain p-2"
-                  />
+                  <Image src={product.image} alt={product.name} fill className="object-contain p-2" />
                   <span className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-foreground text-background text-xs flex items-center justify-center font-medium">
                     {quantity}
                   </span>
@@ -522,7 +358,6 @@ function CheckoutContent() {
                 <span className="font-medium text-foreground text-sm">Rs. {product.price * quantity}</span>
               </div>
 
-              {/* Totals */}
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Subtotal</span>
@@ -530,17 +365,14 @@ function CheckoutContent() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Shipping</span>
-                  <span className="text-foreground">
-                    {selectedShipping.price === 0 ? "Free" : `Rs. ${selectedShipping.price}`}
-                  </span>
+                  <span className="text-foreground">Free</span>
                 </div>
                 <div className="flex justify-between font-semibold text-base pt-3 border-t border-border/40">
                   <span className="text-foreground">Total</span>
-                  <span className="text-foreground">Rs. {total}</span>
+                  <span className="text-foreground">Rs. {subtotal}</span>
                 </div>
               </div>
 
-              {/* Trust badges */}
               <div className="mt-6 pt-6 border-t border-border/40 space-y-3">
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <Shield className="w-4 h-4 text-primary flex-shrink-0" />
