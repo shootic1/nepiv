@@ -137,7 +137,7 @@ export function CartDrawer() {
               onClick={handleCheckout}
               className="w-full bg-primary text-primary-foreground py-4 rounded-full font-medium hover:bg-primary/90 boty-transition"
             >
-              Checkout
+              Reserve My Order
             </button>
 
             <DrawerClose asChild>

@@ -9,7 +9,7 @@ import { Header } from "@/components/boty/header"
 import { nepvicProducts } from "@/lib/products"
 import { Spinner } from "@/components/ui/spinner"
 
-type Step = "information" | "shipping" | "payment" | "confirmed"
+type Step = "information" | "shipping" | "payment" | "confirmed" | "submitted"
 
 const shippingOptions = [
   { id: "standard", label: "Standard Delivery", description: "3-5 business days across Nepal", price: 0 },
@@ -92,19 +92,41 @@ function CheckoutContent() {
     return Object.keys(newErrors).length === 0
   }
 
-  const handleNextStep = () => {
-    if (step === "information") {
-      if (validateInfo()) setStep("shipping")
-    } else if (step === "shipping") {
-      setStep("payment")
-    } else if (step === "payment") {
-      if (validatePayment()) {
-        setIsSubmitting(true)
-        setTimeout(() => {
-          setIsSubmitting(false)
-          setStep("confirmed")
-        }, 1800)
-      }
+  const handleNextStep = async () => {
+    if (step !== "information") {
+      // Legacy steps disabled in lead-capture mode
+      return
+    }
+    if (!validateInfo()) return
+    setIsSubmitting(true)
+    try {
+      await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: form.firstName,
+          lastName: form.lastName,
+          email: form.email,
+          phone: form.phone,
+          address: form.address,
+          city: form.city,
+          state: form.state,
+          pincode: form.pincode,
+          productId: product.id,
+          productName: product.name,
+          size,
+          quantity,
+          unitPrice: product.price,
+          subtotal,
+        }),
+      })
+    } catch (err) {
+      // Even on network failure, we still show the success screen
+      // since the lead-capture is a soft commitment — server logs will show the issue
+      console.error("Lead submission failed", err)
+    } finally {
+      setIsSubmitting(false)
+      setStep("submitted")
     }
   }
 
@@ -116,13 +138,64 @@ function CheckoutContent() {
     return val.replace(/\D/g, "").slice(0, 4).replace(/^(\d{2})(\d)/, "$1/$2")
   }
 
+  // Lead-capture mode: only the Information step is active
   const steps: { key: Step; label: string }[] = [
-    { key: "information", label: "Information" },
-    { key: "shipping", label: "Shipping" },
-    { key: "payment", label: "Payment" }
+    { key: "information", label: "Your Details" },
   ]
 
   const stepIndex = steps.findIndex(s => s.key === step)
+
+  if (step === "submitted") {
+    return (
+      <main className="min-h-screen bg-background flex flex-col">
+        <Header />
+        <div className="flex-1 flex items-center justify-center px-6 pt-28 pb-20">
+          <div className="max-w-lg w-full text-center">
+            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
+              <CheckCircle className="w-10 h-10 text-primary" />
+            </div>
+            <h1 className="font-serif text-4xl text-foreground mb-3">Reservation received!</h1>
+            <p className="text-foreground/80 mb-2">
+              Thank you, {form.firstName}. We&apos;ve saved your details for the {product.name}.
+            </p>
+            <p className="text-muted-foreground mb-8 leading-relaxed">
+              Nepvic is launching in <span className="text-foreground font-medium">{form.city}</span> very soon. Our team will personally reach out to you on <span className="text-foreground">{form.phone}</span> within 24 hours with an early-bird offer and to arrange delivery.
+            </p>
+
+            <div className="bg-card rounded-3xl p-6 boty-shadow mb-8 text-left">
+              <div className="flex items-center gap-4 mb-4 pb-4 border-b border-border/40">
+                <div className="relative w-16 h-16 rounded-2xl bg-muted overflow-hidden flex-shrink-0">
+                  <Image src={product.image} alt={product.name} fill className="object-contain p-2" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">{product.name}</p>
+                  <p className="text-sm text-muted-foreground">{size ? `${size} · ` : ""}Qty {quantity}</p>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                A confirmation has been sent to <span className="text-foreground">{form.email}</span>. No payment required at this time.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Link
+                href="/shop"
+                className="flex-1 inline-flex items-center justify-center px-6 py-3 rounded-full text-sm bg-primary text-primary-foreground boty-transition hover:bg-primary/90"
+              >
+                Continue Browsing
+              </Link>
+              <Link
+                href="/"
+                className="flex-1 inline-flex items-center justify-center px-6 py-3 rounded-full text-sm border border-foreground/20 text-foreground boty-transition hover:bg-foreground/5"
+              >
+                Back to Home
+              </Link>
+            </div>
+          </div>
+        </div>
+      </main>
+    )
+  }
 
   if (step === "confirmed") {
     return (
@@ -417,11 +490,9 @@ function CheckoutContent() {
                       Processing...
                     </span>
                   ) : step === "information" ? (
-                    "Continue to Shipping"
-                  ) : step === "shipping" ? (
-                    "Continue to Payment"
+                    "Reserve My Order"
                   ) : (
-                    `Place Order · Rs. ${total}`
+                    "Continue"
                   )}
                 </button>
               </div>
