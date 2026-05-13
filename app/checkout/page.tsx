@@ -3,34 +3,85 @@
 import { useState, useEffect, Suspense } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useSearchParams, useRouter } from "next/navigation"
-import { ChevronLeft, Shield, Truck, RotateCcw, CheckCircle, Sparkles } from "lucide-react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { ChevronLeft, Shield, Truck, RotateCcw, CheckCircle, Sparkles, Banknote, Wallet } from "lucide-react"
 import { Header } from "@/components/boty/header"
-import { nepvicProducts } from "@/lib/products"
 import { Spinner } from "@/components/ui/spinner"
+import { useCart } from "@/components/boty/cart-context"
+import { nepvicProducts } from "@/lib/products"
 
-type Step = "contact" | "address" | "submitted"
+type Step = "contact" | "address" | "payment" | "submitted"
+type PaymentMethod = "cod" | "esewa" | "khalti"
 
 function CheckoutContent() {
-  const searchParams = useSearchParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { items: cartItems, subtotal: cartSubtotal, itemCount, clearCart } = useCart()
 
-  const productIdParam = searchParams.get("product")
-  const size = searchParams.get("size") || ""
-  const qty = parseInt(searchParams.get("qty") || "1", 10)
+  // Optional single-product fallback (for "Buy Now" links from product page)
+  const buyNowProductId = searchParams.get("product")
+  const buyNowSize = searchParams.get("size") || ""
+  const buyNowQty = parseInt(searchParams.get("qty") || "1", 10)
+  const buyNowProduct = buyNowProductId ? nepvicProducts.find(p => p.id === buyNowProductId) : null
 
-  useEffect(() => {
-    if (!productIdParam) {
-      router.replace("/shop")
+  // Build the active item list (cart OR single buy-now product)
+  type LineItem = {
+    id: string
+    name: string
+    image: string
+    size?: string
+    quantity: number
+    unitPrice: number
+  }
+
+  const lineItems: LineItem[] = (() => {
+    if (cartItems.length > 0) {
+      return cartItems.map(ci => ({
+        id: ci.id,
+        name: ci.name,
+        image: ci.image,
+        quantity: ci.quantity,
+        unitPrice: ci.price,
+        size: ci.description,
+      }))
     }
-  }, [productIdParam, router])
+    if (buyNowProduct) {
+      return [{
+        id: buyNowProduct.id,
+        name: buyNowProduct.name,
+        image: buyNowProduct.image,
+        quantity: buyNowQty,
+        unitPrice: buyNowProduct.price,
+        size: buyNowSize,
+      }]
+    }
+    return []
+  })()
 
-  const product = nepvicProducts.find(p => p.id === productIdParam) || nepvicProducts[0]
-  const [quantity] = useState(qty)
+  const subtotal = cartItems.length > 0
+    ? cartSubtotal
+    : lineItems.reduce((s, l) => s + l.unitPrice * l.quantity, 0)
+
+  const totalQty = cartItems.length > 0
+    ? itemCount
+    : lineItems.reduce((s, l) => s + l.quantity, 0)
+
+  // Redirect if completely empty
+  useEffect(() => {
+    // Slight delay to allow cart hydration from localStorage
+    const t = setTimeout(() => {
+      if (lineItems.length === 0) {
+        router.replace("/shop")
+      }
+    }, 600)
+    return () => clearTimeout(t)
+  }, [lineItems.length, router])
+
   const [step, setStep] = useState<Step>("contact")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [leadId, setLeadId] = useState<string | null>(null)
   const [showUnavailable, setShowUnavailable] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod")
 
   const [form, setForm] = useState({
     firstName: "",
@@ -44,33 +95,30 @@ function CheckoutContent() {
   })
   const [errors, setErrors] = useState<Partial<typeof form>>({})
 
-  const subtotal = product.price * quantity
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
     setForm(prev => ({ ...prev, [name]: value }))
     setErrors(prev => ({ ...prev, [name]: "" }))
-
-    // Auto-trigger unavailable popup as soon as pincode reaches 6 digits
-    if (name === "pincode") {
-      const digitsOnly = value.replace(/\D/g, "")
-      if (digitsOnly.length === 6 && step === "address") {
-        // Persist any address info collected so far (lead update) before showing the popup
-        void submitAddress({ ...form, pincode: digitsOnly })
-        setShowUnavailable(true)
-      }
-    }
   }
 
-  // ---------- Step 1: Save Contact ----------
+  const itemsPayload = lineItems.map(l => ({
+    productId: l.id,
+    productName: l.name,
+    size: l.size || "",
+    quantity: l.quantity,
+    unitPrice: l.unitPrice,
+    lineTotal: l.unitPrice * l.quantity,
+  }))
+
+  // ---------- Step 1 -> Save Contact ----------
   const validateContact = () => {
-    const newErrors: Partial<typeof form> = {}
-    if (!form.firstName.trim()) newErrors.firstName = "Required"
-    if (!form.lastName.trim()) newErrors.lastName = "Required"
-    if (!form.email.trim() || !/\S+@\S+\.\S+/.test(form.email)) newErrors.email = "Valid email required"
-    if (!form.phone.trim() || form.phone.length < 7) newErrors.phone = "Valid phone required"
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    const e: Partial<typeof form> = {}
+    if (!form.firstName.trim()) e.firstName = "Required"
+    if (!form.lastName.trim()) e.lastName = "Required"
+    if (!form.email.trim() || !/\S+@\S+\.\S+/.test(form.email)) e.email = "Valid email required"
+    if (!form.phone.trim() || form.phone.length < 7) e.phone = "Valid phone required"
+    setErrors(e)
+    return Object.keys(e).length === 0
   }
 
   const submitContact = async () => {
@@ -86,27 +134,35 @@ function CheckoutContent() {
           lastName: form.lastName,
           email: form.email,
           phone: form.phone,
-          productId: product.id,
-          productName: product.name,
-          size,
-          quantity,
-          unitPrice: product.price,
+          items: itemsPayload,
+          itemCount: totalQty,
           subtotal,
         }),
       })
       const data = await res.json().catch(() => null)
       if (data?.id) setLeadId(data.id)
     } catch (err) {
-      console.error("Contact submission failed", err)
+      console.error("Step 1 failed", err)
     } finally {
       setIsSubmitting(false)
       setStep("address")
     }
   }
 
-  // ---------- Step 2: Update Lead with Address ----------
-  const submitAddress = async (addr: typeof form) => {
-    if (!leadId) return
+  // ---------- Step 2 -> Save Address ----------
+  const validateAddress = () => {
+    const e: Partial<typeof form> = {}
+    if (!form.address.trim()) e.address = "Required"
+    if (!form.city.trim()) e.city = "Required"
+    if (!form.state.trim()) e.state = "Required"
+    if (!form.pincode.trim() || form.pincode.replace(/\D/g, "").length < 5) e.pincode = "Valid pincode required"
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  const submitAddress = async () => {
+    if (!validateAddress()) return
+    setIsSubmitting(true)
     try {
       await fetch("/api/leads", {
         method: "POST",
@@ -114,33 +170,67 @@ function CheckoutContent() {
         body: JSON.stringify({
           id: leadId,
           stage: "address",
-          firstName: addr.firstName,
-          lastName: addr.lastName,
-          email: addr.email,
-          phone: addr.phone,
-          address: addr.address,
-          city: addr.city,
-          state: addr.state,
-          pincode: addr.pincode,
-          productId: product.id,
-          productName: product.name,
-          size,
-          quantity,
-          unitPrice: product.price,
+          firstName: form.firstName,
+          lastName: form.lastName,
+          email: form.email,
+          phone: form.phone,
+          address: form.address,
+          city: form.city,
+          state: form.state,
+          pincode: form.pincode,
+          items: itemsPayload,
+          itemCount: totalQty,
           subtotal,
         }),
       })
     } catch (err) {
-      console.error("Address update failed", err)
+      console.error("Step 2 failed", err)
+    } finally {
+      setIsSubmitting(false)
+      setStep("payment")
     }
   }
 
-  const handleAcknowledgeUnavailable = () => {
+  // ---------- Step 3 -> Save Payment intent + show modal ----------
+  const placeOrder = async () => {
+    setIsSubmitting(true)
+    try {
+      await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: leadId,
+          stage: "payment",
+          firstName: form.firstName,
+          lastName: form.lastName,
+          email: form.email,
+          phone: form.phone,
+          address: form.address,
+          city: form.city,
+          state: form.state,
+          pincode: form.pincode,
+          paymentMethod,
+          items: itemsPayload,
+          itemCount: totalQty,
+          subtotal,
+        }),
+      })
+    } catch (err) {
+      console.error("Step 3 failed", err)
+    } finally {
+      setIsSubmitting(false)
+      setShowUnavailable(true)
+    }
+  }
+
+  const handleAcknowledge = () => {
     setShowUnavailable(false)
+    // Optionally clear cart after acknowledgement
+    try { clearCart() } catch {}
     setStep("submitted")
   }
 
-  // ---------- Submitted screen ----------
+  // ---------- Submitted ----------
   if (step === "submitted") {
     return (
       <main className="min-h-screen bg-background flex flex-col">
@@ -150,31 +240,16 @@ function CheckoutContent() {
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
               <Sparkles className="w-10 h-10 text-primary" />
             </div>
-            <h1 className="font-serif text-4xl text-foreground mb-3">You&apos;re on the list!</h1>
+            <h1 className="font-serif text-4xl text-foreground mb-3">You&apos;re on our priority list, {form.firstName}!</h1>
             <p className="text-foreground/80 mb-2">
-              Thank you, {form.firstName}. We&apos;ve saved your details for the {product.name}.
+              We&apos;ve saved your order details and shipping address.
             </p>
             <p className="text-muted-foreground mb-8 leading-relaxed">
-              Nepvic is expanding fast. The moment we begin delivering to{" "}
-              <span className="text-foreground font-medium">{form.city || "your area"}</span>, our
-              team will personally reach out to you on{" "}
-              <span className="text-foreground">{form.phone}</span> with an early-bird offer.
+              Our team will personally call you on{" "}
+              <span className="text-foreground">{form.phone}</span> within 24 hours
+              the moment we begin delivering to{" "}
+              <span className="text-foreground font-medium">{form.city || "your area"}</span>.
             </p>
-
-            <div className="bg-card rounded-3xl p-6 boty-shadow mb-8 text-left">
-              <div className="flex items-center gap-4 mb-4 pb-4 border-b border-border/40">
-                <div className="relative w-16 h-16 rounded-2xl bg-muted overflow-hidden flex-shrink-0">
-                  <Image src={product.image} alt={product.name} fill className="object-contain p-2" />
-                </div>
-                <div>
-                  <p className="font-medium text-foreground">{product.name}</p>
-                  <p className="text-sm text-muted-foreground">{size ? `${size} · ` : ""}Qty {quantity}</p>
-                </div>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                A confirmation will be sent to <span className="text-foreground">{form.email}</span>. No payment required at this time.
-              </p>
-            </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
               <Link
@@ -196,18 +271,25 @@ function CheckoutContent() {
     )
   }
 
-  // ---------- 2-step Form ----------
+  // ---------- 3-step Form ----------
   const steps: { key: Step; label: string }[] = [
-    { key: "contact", label: "Your Contact" },
-    { key: "address", label: "Shipping Address" },
+    { key: "contact", label: "Contact" },
+    { key: "address", label: "Shipping" },
+    { key: "payment", label: "Payment" },
   ]
   const stepIndex = steps.findIndex(s => s.key === step)
+
+  const paymentLabels: Record<PaymentMethod, string> = {
+    cod: "Cash on Delivery",
+    esewa: "eSewa",
+    khalti: "Khalti",
+  }
 
   return (
     <main className="min-h-screen bg-background">
       <Header />
 
-      {/* Unavailable Popup */}
+      {/* Unavailable Popup (only on Place Order) */}
       {showUnavailable && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 animate-in fade-in duration-200">
           <div className="bg-background rounded-3xl max-w-md w-full p-8 boty-shadow animate-in zoom-in-95 duration-200">
@@ -218,21 +300,20 @@ function CheckoutContent() {
               We&apos;re launching here soon
             </h2>
             <p className="text-muted-foreground text-center mb-2 leading-relaxed">
-              We&apos;re not delivering to <span className="text-foreground font-medium">{form.pincode}</span> just yet
-              {form.city ? <> ({form.city})</> : null}.
+              Unfortunately we&apos;re not delivering to{" "}
+              <span className="text-foreground font-medium">{form.city || form.pincode}</span> just yet.
             </p>
             <p className="text-muted-foreground text-center mb-6 leading-relaxed">
-              You&apos;re officially on our early-access list. As soon as we expand
-              to your area, our team will personally reach out to{" "}
-              <span className="text-foreground">{form.phone}</span> with an
-              exclusive early-bird offer on the {product.name}.
+              Your order is saved as a priority. Our team will personally call{" "}
+              <span className="text-foreground">{form.phone}</span> within 24 hours
+              the moment we expand to your area &mdash; with an exclusive early-bird offer.
             </p>
             <button
               type="button"
-              onClick={handleAcknowledgeUnavailable}
+              onClick={handleAcknowledge}
               className="w-full bg-primary text-primary-foreground px-8 py-4 rounded-full text-sm tracking-wide boty-transition hover:bg-primary/90 boty-shadow"
             >
-              Got it — keep me posted
+              Got it &mdash; keep me posted
             </button>
           </div>
         </div>
@@ -240,17 +321,16 @@ function CheckoutContent() {
 
       <div className="pt-28 pb-20">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
-          {/* Back */}
           <Link
-            href={`/product/${product.id}`}
+            href="/shop"
             className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground boty-transition mb-8"
           >
             <ChevronLeft className="w-4 h-4" />
-            Back to product
+            Back to shop
           </Link>
 
           {/* Step Indicator */}
-          <div className="flex items-center gap-2 mb-10">
+          <div className="flex items-center gap-2 mb-10 flex-wrap">
             {steps.map((s, i) => (
               <div key={s.key} className="flex items-center gap-2">
                 <div
@@ -269,7 +349,7 @@ function CheckoutContent() {
                   >
                     {i < stepIndex ? <CheckCircle className="w-4 h-4" /> : i + 1}
                   </div>
-                  <span className="hidden sm:block">{s.label}</span>
+                  <span className="hidden sm:inline">{s.label}</span>
                 </div>
                 {i < steps.length - 1 && (
                   <div className={`w-8 h-px transition-colors ${i < stepIndex ? "bg-primary" : "bg-border"}`} />
@@ -283,9 +363,9 @@ function CheckoutContent() {
             <div className="bg-card rounded-3xl p-8 boty-shadow">
               {step === "contact" && (
                 <div>
-                  <h2 className="font-serif text-2xl text-foreground mb-2">Your Contact</h2>
+                  <h2 className="font-serif text-2xl text-foreground mb-2">Contact Information</h2>
                   <p className="text-sm text-muted-foreground mb-6">
-                    Quick details so we can reach out when delivery opens in your area.
+                    We&apos;ll use these details for order updates and delivery.
                   </p>
                   <div className="space-y-5">
                     <div className="grid sm:grid-cols-2 gap-5">
@@ -302,17 +382,7 @@ function CheckoutContent() {
                       disabled={isSubmitting}
                       className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-8 py-4 rounded-full text-sm tracking-wide boty-transition hover:bg-primary/90 disabled:opacity-70 boty-shadow"
                     >
-                      {isSubmitting ? (
-                        <span className="flex items-center gap-2">
-                          <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                          </svg>
-                          Saving...
-                        </span>
-                      ) : (
-                        "Continue"
-                      )}
+                      {isSubmitting ? "Saving..." : "Continue to shipping"}
                     </button>
                   </div>
                 </div>
@@ -322,7 +392,7 @@ function CheckoutContent() {
                 <div>
                   <h2 className="font-serif text-2xl text-foreground mb-2">Shipping Address</h2>
                   <p className="text-sm text-muted-foreground mb-6">
-                    Where should we deliver your {product.name} once we launch in your area?
+                    Where should we deliver your order?
                   </p>
                   <div className="space-y-5">
                     <FormField label="Address" name="address" value={form.address} onChange={handleChange} error={errors.address} placeholder="House no., Tole, Ward" />
@@ -333,43 +403,132 @@ function CheckoutContent() {
                     </div>
                   </div>
                   <div className="mt-6 flex items-center gap-3 text-xs text-muted-foreground">
+                    <Truck className="w-4 h-4 text-primary flex-shrink-0" />
+                    Free shipping across Nepal on orders above Rs. 999.
+                  </div>
+                  <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setStep("contact")}
+                      className="sm:w-auto inline-flex items-center justify-center px-6 py-4 rounded-full text-sm border border-foreground/20 text-foreground boty-transition hover:bg-foreground/5"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={submitAddress}
+                      disabled={isSubmitting}
+                      className="flex-1 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-8 py-4 rounded-full text-sm tracking-wide boty-transition hover:bg-primary/90 disabled:opacity-70 boty-shadow"
+                    >
+                      {isSubmitting ? "Saving..." : "Continue to payment"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {step === "payment" && (
+                <div>
+                  <h2 className="font-serif text-2xl text-foreground mb-2">Payment Method</h2>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Choose how you&apos;d like to pay. All options are secure.
+                  </p>
+                  <div className="space-y-3">
+                    <PaymentOption
+                      id="cod"
+                      checked={paymentMethod === "cod"}
+                      onSelect={setPaymentMethod}
+                      icon={<Banknote className="w-5 h-5 text-primary" />}
+                      title="Cash on Delivery"
+                      description="Pay in cash when your order arrives. No advance required."
+                      badge="Most Popular"
+                    />
+                    <PaymentOption
+                      id="esewa"
+                      checked={paymentMethod === "esewa"}
+                      onSelect={setPaymentMethod}
+                      icon={<Wallet className="w-5 h-5 text-primary" />}
+                      title="eSewa"
+                      description="Pay instantly via your eSewa wallet."
+                    />
+                    <PaymentOption
+                      id="khalti"
+                      checked={paymentMethod === "khalti"}
+                      onSelect={setPaymentMethod}
+                      icon={<Wallet className="w-5 h-5 text-primary" />}
+                      title="Khalti"
+                      description="Pay instantly via your Khalti wallet."
+                    />
+                  </div>
+
+                  <div className="mt-6 flex items-center gap-3 text-xs text-muted-foreground">
                     <Shield className="w-4 h-4 text-primary flex-shrink-0" />
-                    Your details are kept private and only used to notify you when we launch in your area.
+                    Your information is protected by 256-bit SSL encryption.
+                  </div>
+
+                  <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setStep("address")}
+                      className="sm:w-auto inline-flex items-center justify-center px-6 py-4 rounded-full text-sm border border-foreground/20 text-foreground boty-transition hover:bg-foreground/5"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={placeOrder}
+                      disabled={isSubmitting}
+                      className="flex-1 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-8 py-4 rounded-full text-sm tracking-wide boty-transition hover:bg-primary/90 disabled:opacity-70 boty-shadow"
+                    >
+                      {isSubmitting ? "Placing order..." : `Place Order \u00b7 Rs. ${subtotal}`}
+                    </button>
                   </div>
                 </div>
               )}
             </div>
 
             {/* Right: Order Summary */}
-            <div className="bg-card rounded-3xl p-6 boty-shadow sticky top-28">
+            <div className="bg-card rounded-3xl p-6 boty-shadow lg:sticky lg:top-28">
               <h3 className="font-serif text-xl text-foreground mb-5">Order Summary</h3>
 
-              <div className="flex items-center gap-4 mb-6 pb-6 border-b border-border/40">
-                <div className="relative w-20 h-20 rounded-2xl bg-muted overflow-hidden flex-shrink-0">
-                  <Image src={product.image} alt={product.name} fill className="object-contain p-2" />
-                  <span className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-foreground text-background text-xs flex items-center justify-center font-medium">
-                    {quantity}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-foreground text-sm leading-snug">{product.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{size}</p>
-                </div>
-                <span className="font-medium text-foreground text-sm">Rs. {product.price * quantity}</span>
+              <div className="space-y-4 mb-6 pb-6 border-b border-border/40 max-h-80 overflow-y-auto pr-1">
+                {lineItems.map(li => (
+                  <div key={li.id} className="flex items-center gap-3">
+                    <div className="relative w-14 h-14 rounded-xl bg-muted overflow-hidden flex-shrink-0">
+                      <Image src={li.image} alt={li.name} fill className="object-contain p-1.5" sizes="56px" />
+                      <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-foreground text-background text-[10px] flex items-center justify-center font-medium">
+                        {li.quantity}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground text-sm leading-snug truncate">{li.name}</p>
+                      {li.size && <p className="text-xs text-muted-foreground mt-0.5 truncate">{li.size}</p>}
+                    </div>
+                    <span className="font-medium text-foreground text-sm whitespace-nowrap">Rs. {li.unitPrice * li.quantity}</span>
+                  </div>
+                ))}
+                {lineItems.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">Your cart is empty.</p>
+                )}
               </div>
 
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="text-muted-foreground">Subtotal ({totalQty} {totalQty === 1 ? "item" : "items"})</span>
                   <span className="text-foreground">Rs. {subtotal}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Shipping</span>
-                  <span className="text-foreground">Free</span>
+                  <span className="text-foreground">{subtotal >= 999 ? "Free" : "Rs. 100"}</span>
                 </div>
+                {step === "payment" && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Payment</span>
+                    <span className="text-foreground">{paymentLabels[paymentMethod]}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-semibold text-base pt-3 border-t border-border/40">
                   <span className="text-foreground">Total</span>
-                  <span className="text-foreground">Rs. {subtotal}</span>
+                  <span className="text-foreground">Rs. {subtotal + (subtotal >= 999 ? 0 : 100)}</span>
                 </div>
               </div>
 
@@ -445,5 +604,56 @@ function FormField({
       />
       {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
     </div>
+  )
+}
+
+function PaymentOption({
+  id,
+  checked,
+  onSelect,
+  icon,
+  title,
+  description,
+  badge,
+}: {
+  id: PaymentMethod
+  checked: boolean
+  onSelect: (m: PaymentMethod) => void
+  icon: React.ReactNode
+  title: string
+  description: string
+  badge?: string
+}) {
+  return (
+    <label
+      htmlFor={`pay-${id}`}
+      className={`flex items-start gap-4 p-4 rounded-2xl border cursor-pointer boty-transition ${
+        checked ? "border-primary bg-primary/5" : "border-border/40 hover:border-foreground/30"
+      }`}
+    >
+      <input
+        type="radio"
+        id={`pay-${id}`}
+        name="payment-method"
+        value={id}
+        checked={checked}
+        onChange={() => onSelect(id)}
+        className="mt-1 h-4 w-4 accent-primary"
+      />
+      <div className="w-10 h-10 rounded-xl bg-background flex items-center justify-center flex-shrink-0">
+        {icon}
+      </div>
+      <div className="flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-foreground text-sm">{title}</span>
+          {badge && (
+            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+              {badge}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{description}</p>
+      </div>
+    </label>
   )
 }

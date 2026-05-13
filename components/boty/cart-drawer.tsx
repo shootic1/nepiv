@@ -23,9 +23,8 @@ export function CartDrawer() {
 
   const handleCheckout = () => {
     if (items.length === 0) return
-    const first = items[0]
     setIsOpen(false)
-    router.push(`/checkout?product=${first.id}&qty=${first.quantity}`)
+    router.push(`/checkout`)
   }
 
   return (
@@ -137,7 +136,7 @@ export function CartDrawer() {
               onClick={handleCheckout}
               className="w-full bg-primary text-primary-foreground py-4 rounded-full font-medium hover:bg-primary/90 boty-transition"
             >
-              Reserve My Order
+              Place My Order
             </button>
 
             <DrawerClose asChild>

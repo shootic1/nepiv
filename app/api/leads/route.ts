@@ -3,7 +3,16 @@ import { NextRequest, NextResponse } from "next/server"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-type Stage = "contact" | "address" | "complete"
+type Stage = "contact" | "address" | "payment" | "complete"
+type PaymentMethod = "cod" | "esewa" | "khalti"
+type CartItem = {
+  productId?: string
+  productName?: string
+  size?: string
+  quantity?: number
+  unitPrice?: number
+  lineTotal?: number
+}
 
 type LeadInput = {
   // identity
@@ -25,12 +34,18 @@ type LeadInput = {
   quantity?: number
   unitPrice?: number
   subtotal?: number
+  // multi-item cart (preferred when present)
+  items?: CartItem[]
+  itemCount?: number
+  // payment
+  paymentMethod?: PaymentMethod
   // misc
   notes?: string
   stage?: Stage
 }
 
-type StoredLead = Omit<LeadInput, "id"> & {
+type StoredLead = Omit<LeadInput, "id" | "items"> & {
+  items?: CartItem[]
   id: string
   createdAt: string
   updatedAt: string
@@ -105,6 +120,9 @@ export async function POST(req: NextRequest) {
         quantity: body.quantity ?? 1,
         unitPrice: body.unitPrice,
         subtotal: body.subtotal,
+        items: body.items,
+        itemCount: body.itemCount,
+        paymentMethod: body.paymentMethod,
         notes: body.notes,
       }
       memoryStore.unshift(created)
@@ -128,6 +146,9 @@ export async function POST(req: NextRequest) {
       quantity: body.quantity ?? existing.quantity,
       unitPrice: body.unitPrice ?? existing.unitPrice,
       subtotal: body.subtotal ?? existing.subtotal,
+      items: body.items ?? existing.items,
+      itemCount: body.itemCount ?? existing.itemCount,
+      paymentMethod: body.paymentMethod ?? existing.paymentMethod,
       notes: body.notes ?? existing.notes,
     }
     memoryStore[idx] = merged
@@ -170,6 +191,9 @@ export async function POST(req: NextRequest) {
     quantity: body.quantity ?? 1,
     unitPrice: body.unitPrice,
     subtotal: body.subtotal,
+    items: body.items,
+    itemCount: body.itemCount,
+    paymentMethod: body.paymentMethod,
     notes: body.notes,
   }
 

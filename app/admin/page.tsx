@@ -4,11 +4,20 @@ import { Fragment, useEffect, useMemo, useState } from "react"
 import { Header } from "@/components/boty/header"
 import { Search, Download, RefreshCw, LogOut, ChevronDown, ChevronUp } from "lucide-react"
 
+type CartLineItem = {
+  productId?: string
+  productName?: string
+  size?: string
+  quantity?: number
+  unitPrice?: number
+  lineTotal?: number
+}
+
 type Lead = {
   id: string
   createdAt: string
   updatedAt?: string
-  stage?: "contact" | "address" | "complete"
+  stage?: "contact" | "address" | "payment" | "complete"
   status: "new" | "contacted" | "won" | "lost"
   source: string
   firstName?: string
@@ -25,7 +34,16 @@ type Lead = {
   quantity?: number
   unitPrice?: number
   subtotal?: number
+  items?: CartLineItem[]
+  itemCount?: number
+  paymentMethod?: "cod" | "esewa" | "khalti"
   notes?: string
+}
+
+const PAYMENT_LABELS: Record<NonNullable<Lead["paymentMethod"]>, string> = {
+  cod: "Cash on Delivery",
+  esewa: "eSewa",
+  khalti: "Khalti",
 }
 
 const STATUS_OPTIONS: Lead["status"][] = ["new", "contacted", "won", "lost"]
@@ -149,6 +167,9 @@ export default function AdminPage() {
       "quantity",
       "unitPrice",
       "subtotal",
+      "itemCount",
+      "paymentMethod",
+      "itemsSummary",
       "notes",
     ]
     const escape = (v: any) => {
@@ -156,7 +177,13 @@ export default function AdminPage() {
       const s = String(v).replace(/"/g, '""')
       return /[",\n]/.test(s) ? `"${s}"` : s
     }
-    const rows = filtered.map((l) => header.map((h) => escape((l as any)[h])).join(","))
+    const rows = filtered.map((l) => {
+      const itemsSummary = (l.items || [])
+        .map((it) => `${it.productName} x${it.quantity}`)
+        .join(" | ")
+      const enriched: any = { ...l, itemsSummary }
+      return header.map((h) => escape(enriched[h])).join(",")
+    })
     const csv = [header.join(","), ...rows].join("\n")
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
     const url = URL.createObjectURL(blob)
@@ -335,18 +362,41 @@ export default function AdminPage() {
                             <div className="text-xs">{l.phone}</div>
                           </td>
                           <td className="px-4 py-3">
-                            {l.stage === "address" ? (
-                              <span className="px-2 py-1 rounded-full text-xs border bg-emerald-100 text-emerald-800 border-emerald-200">Full</span>
+                            {l.stage === "payment" || l.stage === "complete" ? (
+                              <div className="flex flex-col gap-1">
+                                <span className="px-2 py-1 rounded-full text-xs border bg-emerald-100 text-emerald-800 border-emerald-200 w-fit">Payment intent</span>
+                                {l.paymentMethod && (
+                                  <span className="text-[10px] text-muted-foreground">{PAYMENT_LABELS[l.paymentMethod]}</span>
+                                )}
+                              </div>
+                            ) : l.stage === "address" ? (
+                              <span className="px-2 py-1 rounded-full text-xs border bg-orange-100 text-orange-800 border-orange-200">Address</span>
                             ) : (
                               <span className="px-2 py-1 rounded-full text-xs border bg-amber-100 text-amber-800 border-amber-200">Contact only</span>
                             )}
                           </td>
                           <td className="px-4 py-3 text-foreground">{l.city || <span className="text-muted-foreground/60">—</span>}</td>
                           <td className="px-4 py-3 text-foreground">
-                            {l.productName}
-                            <div className="text-xs text-muted-foreground">
-                              {l.size} · Qty {l.quantity}
-                            </div>
+                            {l.items && l.items.length > 0 ? (
+                              <div>
+                                <div className="font-medium">
+                                  {l.items[0].productName}
+                                  {l.items.length > 1 && (
+                                    <span className="text-muted-foreground font-normal"> +{l.items.length - 1} more</span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {l.itemCount || l.items.reduce((s, it) => s + (it.quantity || 0), 0)} items
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                {l.productName}
+                                <div className="text-xs text-muted-foreground">
+                                  {l.size} · Qty {l.quantity}
+                                </div>
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-foreground">Rs. {l.subtotal}</td>
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -369,7 +419,7 @@ export default function AdminPage() {
                         {expanded && (
                           <tr className="bg-background/30 border-b border-border/30">
                             <td colSpan={9} className="px-6 py-5">
-                              <div className="grid md:grid-cols-2 gap-6">
+                              <div className="grid md:grid-cols-3 gap-6">
                                 <div>
                                   <h4 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
                                     Shipping address
@@ -377,12 +427,44 @@ export default function AdminPage() {
                                   <p className="text-sm text-foreground leading-relaxed">
                                     {l.firstName} {l.lastName}
                                     <br />
-                                    {l.address}
+                                    {l.address || <span className="text-muted-foreground">—</span>}
                                     <br />
-                                    {l.city}, {l.state} - {l.pincode}
+                                    {l.city}, {l.state} {l.pincode ? `- ${l.pincode}` : ""}
                                     <br />
                                     {l.phone}
                                   </p>
+                                  {l.paymentMethod && (
+                                    <p className="mt-3 text-sm text-foreground">
+                                      <span className="text-xs uppercase tracking-wide text-muted-foreground">Payment: </span>
+                                      {PAYMENT_LABELS[l.paymentMethod]}
+                                    </p>
+                                  )}
+                                </div>
+                                <div>
+                                  <h4 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
+                                    Cart items
+                                  </h4>
+                                  {l.items && l.items.length > 0 ? (
+                                    <ul className="text-sm text-foreground space-y-1">
+                                      {l.items.map((it, i) => (
+                                        <li key={i} className="flex justify-between gap-3">
+                                          <span>
+                                            {it.productName}
+                                            <span className="text-muted-foreground"> ×{it.quantity}</span>
+                                          </span>
+                                          <span className="text-muted-foreground whitespace-nowrap">Rs. {it.lineTotal ?? (it.unitPrice || 0) * (it.quantity || 0)}</span>
+                                        </li>
+                                      ))}
+                                      <li className="flex justify-between gap-3 pt-2 mt-2 border-t border-border/40 font-medium">
+                                        <span>Total</span>
+                                        <span>Rs. {l.subtotal}</span>
+                                      </li>
+                                    </ul>
+                                  ) : (
+                                    <p className="text-sm text-muted-foreground">
+                                      {l.productName} · Qty {l.quantity} · Rs. {l.subtotal}
+                                    </p>
+                                  )}
                                 </div>
                                 <div>
                                   <h4 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
