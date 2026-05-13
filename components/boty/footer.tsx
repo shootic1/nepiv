@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Instagram, Facebook, Twitter } from "lucide-react"
+import { Instagram, Facebook, Music2 } from "lucide-react"
 
 const footerLinks = {
   shop: [
@@ -9,19 +9,20 @@ const footerLinks = {
     { name: "Serums", href: "/shop?category=serums" },
     { name: "Moisturizers", href: "/shop?category=moisturizers" },
     { name: "Cleansers", href: "/shop?category=cleansers" },
-    { name: "Gift Sets", href: "/shop" }
+    { name: "Sunscreen", href: "/shop?category=sunscreen" },
+    { name: "Gift Sets", href: "/shop?category=gift-sets" }
   ],
   about: [
-    { name: "Our Story", href: "/" },
-    { name: "Ingredients", href: "/" },
-    { name: "Sustainability", href: "/" },
-    { name: "Press", href: "/" }
+    { name: "Our Story", href: "/about/our-story" },
+    { name: "Ingredients", href: "/about/ingredients" },
+    { name: "Sustainability", href: "/about/sustainability" },
+    { name: "Press", href: "/about/press" }
   ],
   support: [
-    { name: "Contact Us", href: "/" },
-    { name: "FAQ", href: "/" },
-    { name: "Shipping", href: "/" },
-    { name: "Returns", href: "/" }
+    { name: "Contact Us", href: "/support/contact" },
+    { name: "FAQ", href: "/support/faq" },
+    { name: "Shipping", href: "/support/shipping" },
+    { name: "Returns", href: "/support/returns" }
   ]
 }
 
@@ -39,13 +40,15 @@ export function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-16">
           {/* Brand */}
           <div className="col-span-2 md:col-span-1">
-            <h2 className="font-serif text-3xl text-foreground mb-4">Nepvic</h2>
+            <Link href="/" className="inline-block">
+              <h2 className="font-serif text-3xl text-foreground mb-4">Nepvic</h2>
+            </Link>
             <p className="text-sm text-muted-foreground leading-relaxed mb-6">
               Natural skincare made for Nepal. Sulphate and paraben free products for all skin types.
             </p>
             <div className="flex gap-4">
               <a
-                href="https://x.com/Kerroudjm"
+                href="https://www.instagram.com/nepvic"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-10 h-10 rounded-full bg-background flex items-center justify-center text-foreground/60 hover:text-foreground boty-transition boty-shadow"
@@ -54,7 +57,7 @@ export function Footer() {
                 <Instagram className="w-4 h-4" />
               </a>
               <a
-                href="https://x.com/Kerroudjm"
+                href="https://www.facebook.com/nepvic"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-10 h-10 rounded-full bg-background flex items-center justify-center text-foreground/60 hover:text-foreground boty-transition boty-shadow"
@@ -63,13 +66,13 @@ export function Footer() {
                 <Facebook className="w-4 h-4" />
               </a>
               <a
-                href="https://x.com/Kerroudjm"
+                href="https://www.tiktok.com/@nepvic"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-10 h-10 rounded-full bg-background flex items-center justify-center text-foreground/60 hover:text-foreground boty-transition boty-shadow"
-                aria-label="Twitter"
+                aria-label="TikTok"
               >
-                <Twitter className="w-4 h-4" />
+                <Music2 className="w-4 h-4" />
               </a>
             </div>
           </div>
@@ -133,10 +136,10 @@ export function Footer() {
               © {new Date().getFullYear()} Nepvic Nepal. All rights reserved.
             </p>
             <div className="flex gap-6">
-              <Link href="/" className="text-sm text-muted-foreground hover:text-foreground boty-transition">
+              <Link href="/legal/privacy" className="text-sm text-muted-foreground hover:text-foreground boty-transition">
                 Privacy Policy
               </Link>
-              <Link href="/" className="text-sm text-muted-foreground hover:text-foreground boty-transition">
+              <Link href="/legal/terms" className="text-sm text-muted-foreground hover:text-foreground boty-transition">
                 Terms of Service
               </Link>
             </div>

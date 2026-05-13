@@ -1,38 +1,74 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, Suspense, useMemo } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useSearchParams, useRouter } from "next/navigation"
 import { ShoppingBag } from "lucide-react"
 import { Header } from "@/components/boty/header"
 import { Footer } from "@/components/boty/footer"
 import { nepvicProducts } from "@/lib/products"
 import { useCart } from "@/components/boty/cart-context"
+import { Spinner } from "@/components/ui/spinner"
 
-export default function ShopPage() {
+type CategoryKey = "all" | "serums" | "moisturizers" | "cleansers" | "sunscreen" | "gift-sets"
+
+const CATEGORY_LABEL: Record<CategoryKey, string> = {
+  all: "All Products",
+  serums: "Serums",
+  moisturizers: "Moisturizers",
+  cleansers: "Cleansers",
+  sunscreen: "Sunscreen",
+  "gift-sets": "Gift Sets",
+}
+
+const CATEGORY_TAGLINE: Record<CategoryKey, string> = {
+  all: "Discover our complete range of natural skincare essentials",
+  serums: "Targeted formulas with Niacinamide, Kojic Acid and Vitmalide Oil",
+  moisturizers: "Lightweight, deeply hydrating moisturizers for all skin types",
+  cleansers: "Brightening face washes that respect your skin barrier",
+  sunscreen: "Broad spectrum SPF 50 protection made for Nepal's sun",
+  "gift-sets": "Curated bundles for friends, family and festive seasons",
+}
+
+function matchCategory(productCategory: string, key: CategoryKey): boolean {
+  if (key === "all") return true
+  if (key === "serums") return productCategory === "serum"
+  if (key === "moisturizers") return productCategory === "moisturizer"
+  if (key === "cleansers") return productCategory === "face-wash"
+  if (key === "sunscreen") return productCategory === "sunscreen"
+  if (key === "gift-sets") return false // future bundles
+  return true
+}
+
+function ShopContent() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const rawCategory = (searchParams.get("category") || "all") as CategoryKey
+  const category: CategoryKey = (CATEGORY_LABEL[rawCategory] ? rawCategory : "all") as CategoryKey
+
   const [isVisible, setIsVisible] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true)
-        }
+        if (entry.isIntersecting) setIsVisible(true)
       },
       { threshold: 0.1 }
     )
-
-    if (gridRef.current) {
-      observer.observe(gridRef.current)
-    }
-
+    if (gridRef.current) observer.observe(gridRef.current)
     return () => {
-      if (gridRef.current) {
-        observer.unobserve(gridRef.current)
-      }
+      if (gridRef.current) observer.unobserve(gridRef.current)
     }
   }, [])
+
+  const filteredProducts = useMemo(
+    () => nepvicProducts.filter(p => matchCategory(p.category, category)),
+    [category]
+  )
+
+  const allCategories: CategoryKey[] = ["all", "cleansers", "serums", "moisturizers", "sunscreen", "gift-sets"]
 
   return (
     <main className="min-h-screen">
@@ -46,39 +82,90 @@ export default function ShopPage() {
               Our Collection
             </span>
             <h1 className="font-serif text-4xl md:text-5xl lg:text-6xl text-foreground mb-4 text-balance">
-              Shop All Products
+              {CATEGORY_LABEL[category]}
             </h1>
             <p className="text-lg text-muted-foreground max-w-md mx-auto">
-              Discover our complete range of natural skincare essentials
+              {CATEGORY_TAGLINE[category]}
             </p>
+          </div>
+
+          {/* Category pills */}
+          <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
+            {allCategories.map((c) => {
+              const active = c === category
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => {
+                    const url = c === "all" ? "/shop" : `/shop?category=${c}`
+                    router.push(url, { scroll: false })
+                  }}
+                  className={`px-4 py-2 rounded-full text-sm boty-transition border ${
+                    active
+                      ? "bg-foreground text-background border-foreground"
+                      : "bg-background text-foreground border-border/50 hover:border-foreground/40"
+                  }`}
+                >
+                  {CATEGORY_LABEL[c]}
+                </button>
+              )
+            })}
           </div>
 
           {/* Count bar */}
           <div className="flex items-center justify-end mb-10 pb-6 border-b border-border/50">
             <span className="text-sm text-muted-foreground">
-              {nepvicProducts.length} products
+              {filteredProducts.length} {filteredProducts.length === 1 ? "product" : "products"}
             </span>
           </div>
 
           {/* Product Grid */}
-          <div
-            ref={gridRef}
-            className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6"
-          >
-            {nepvicProducts.map((product, index) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                index={index}
-                isVisible={isVisible}
-              />
-            ))}
-          </div>
+          {filteredProducts.length === 0 ? (
+            <div className="text-center py-20">
+              <p className="font-serif text-2xl text-foreground mb-3">Coming soon</p>
+              <p className="text-muted-foreground max-w-md mx-auto mb-8">
+                We&apos;re putting together beautiful bundles for you. Meanwhile, build your own routine from our individual products.
+              </p>
+              <Link
+                href="/shop"
+                className="inline-flex items-center px-6 py-3 rounded-full bg-primary text-primary-foreground text-sm boty-transition hover:bg-primary/90"
+              >
+                Shop all products
+              </Link>
+            </div>
+          ) : (
+            <div
+              ref={gridRef}
+              className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6"
+            >
+              {filteredProducts.map((product, index) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  index={index}
+                  isVisible={isVisible}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       <Footer />
     </main>
+  )
+}
+
+export default function ShopPage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen flex items-center justify-center">
+        <Spinner className="size-8 text-primary" />
+      </main>
+    }>
+      <ShopContent />
+    </Suspense>
   )
 }
 
