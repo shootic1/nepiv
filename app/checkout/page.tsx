@@ -319,8 +319,8 @@ function CheckoutContent() {
         </div>
       )}
 
-      <div className="pt-28 pb-20">
-        <div className="max-w-6xl mx-auto px-6 lg:px-8">
+      <div className="pt-28 pb-20 overflow-x-hidden">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <Link
             href="/shop"
             className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground boty-transition mb-8"
@@ -358,12 +358,12 @@ function CheckoutContent() {
             ))}
           </div>
 
-          <div className="grid lg:grid-cols-[1fr_380px] gap-10 items-start">
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-6 lg:gap-10 items-start">
             {/* Left: Form */}
-            <div className="bg-card rounded-3xl p-8 boty-shadow">
+            <div className="bg-card rounded-3xl p-5 sm:p-8 boty-shadow min-w-0 w-full">
               {step === "contact" && (
                 <div>
-                  <h2 className="font-serif text-2xl text-foreground mb-2">Contact Information</h2>
+                  <h2 className="font-serif text-xl sm:text-2xl text-foreground mb-2">Contact Information</h2>
                   <p className="text-sm text-muted-foreground mb-6">
                     We&apos;ll use these details for order updates and delivery.
                   </p>
@@ -390,7 +390,7 @@ function CheckoutContent() {
 
               {step === "address" && (
                 <div>
-                  <h2 className="font-serif text-2xl text-foreground mb-2">Shipping Address</h2>
+                  <h2 className="font-serif text-xl sm:text-2xl text-foreground mb-2">Shipping Address</h2>
                   <p className="text-sm text-muted-foreground mb-6">
                     Where should we deliver your order?
                   </p>
@@ -428,7 +428,7 @@ function CheckoutContent() {
 
               {step === "payment" && (
                 <div>
-                  <h2 className="font-serif text-2xl text-foreground mb-2">Payment Method</h2>
+                  <h2 className="font-serif text-xl sm:text-2xl text-foreground mb-2">Payment Method</h2>
                   <p className="text-sm text-muted-foreground mb-6">
                     Choose how you&apos;d like to pay. All options are secure.
                   </p>
@@ -487,7 +487,7 @@ function CheckoutContent() {
             </div>
 
             {/* Right: Order Summary */}
-            <div className="bg-card rounded-3xl p-6 boty-shadow lg:sticky lg:top-28">
+            <div className="bg-card rounded-3xl p-5 sm:p-6 boty-shadow lg:sticky lg:top-28 min-w-0 w-full">
               <h3 className="font-serif text-xl text-foreground mb-5">Order Summary</h3>
 
               <div className="space-y-4 mb-6 pb-6 border-b border-border/40 max-h-80 overflow-y-auto pr-1">
